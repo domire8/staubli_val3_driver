@@ -1,0 +1,78 @@
+ARG BASE_TAG=melodic
+FROM ros:${BASE_TAG} as base-dependencies
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+  curl \
+  featherpad \
+  git \
+  iputils-ping \
+  libeigen3-dev \
+  libtool \
+  mesa-utils \
+  nano \
+  ros-${ROS_DISTRO}-xacro \
+  ros-${ROS_DISTRO}-robot-state-publisher \
+  ros-${ROS_DISTRO}-rviz \
+  ros-${ROS_DISTRO}-industrial-core \
+  rsync \
+  software-properties-common \
+  ssh \
+  unzip \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN echo "Set disable_coredump false" >> /etc/sudo.conf
+
+# disable suggested and recommended install
+RUN apt-config dump | grep -we Recommends -e Suggests | sed s/1/0/ \
+  | sudo tee /etc/apt/apt.conf.d/999norecommend
+
+# disable pip caching
+ENV PIP_NO_CACHE_DIR=1
+
+# Configure sshd server settings
+RUN ( \
+    echo 'LogLevel DEBUG2'; \
+    echo 'PubkeyAuthentication yes'; \
+    echo 'Subsystem sftp /usr/lib/openssh/sftp-server'; \
+  ) > /etc/ssh/sshd_config_development \
+  && mkdir /run/sshd
+
+
+FROM base-dependencies as base-workspace
+ENV USER ros
+ENV HOME /home/${USER}
+ENV ROS_WORKSPACE /home/${USER}/ros_ws
+
+# create and configure a new user
+ARG UID=1000
+ARG GID=1000
+RUN addgroup --gid ${GID} ${USER}
+RUN adduser --gecos "ROS User" --uid ${UID} --gid ${GID} ${USER} && yes | passwd ${USER}
+RUN usermod -a -G dialout ${USER}
+RUN echo "${USER} ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/99_aptget
+RUN chmod 0440 /etc/sudoers.d/99_aptget && chown root:root /etc/sudoers.d/99_aptget
+
+# build ROS workspace
+USER ${USER}
+RUN mkdir -p ${ROS_WORKSPACE}/src
+WORKDIR ${ROS_WORKSPACE}
+RUN rosdep update
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/usr/local/lib
+RUN /bin/bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash; catkin_make"
+
+# create the credentials to be able to pull private repos using ssh
+USER root
+RUN mkdir /root/.ssh/ && ssh-keyscan github.com | tee -a /root/.ssh/known_hosts
+
+# prepend the environment sourcing to bashrc (appending will fail for non-interactive sessions)
+RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash; \
+source ${ROS_WORKSPACE}/devel/setup.bash" | cat - ${HOME}/.bashrc > tmp && mv tmp ${HOME}/.bashrc
+RUN echo "session required pam_limits.so" | tee --append /etc/pam.d/common-session > /dev/null
+
+# start as ROS user
+USER ${USER}
+WORKDIR ${ROS_WORKSPACE}
+
+# Clean image
+RUN sudo apt-get clean && sudo rm -rf /var/lib/apt/lists/*

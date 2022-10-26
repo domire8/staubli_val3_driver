@@ -26,6 +26,11 @@
 
   <buildtool_depend>catkin</buildtool_depend>
 
+  <depend>actionlib</depend>
+  <depend>control_msgs</depend>
+  <depend>trajectory_msgs</depend>
+  <depend>roscpp</depend>
+
   <exec_depend>industrial_robot_client</exec_depend>
 
   <test_depend>roslaunch</test_depend>

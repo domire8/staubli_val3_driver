@@ -14,6 +14,7 @@ RUN apt-get update && apt-get install -y \
   ros-${ROS_DISTRO}-xacro \
   ros-${ROS_DISTRO}-robot-state-publisher \
   ros-${ROS_DISTRO}-rviz \
+  ros-${ROS_DISTRO}-control-msgs \
   ros-${ROS_DISTRO}-industrial-core \
   rsync \
   software-properties-common \
